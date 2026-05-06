@@ -14,7 +14,7 @@ When you open a hashtag search page on Instagram, the browser makes API calls to
 
 ## Installation
 
-1. [Download or clone this repository](../../)
+1. [Download this repository](https://github.com/dwisulfahnur/ig-crawler-chrome-extension/archive/refs/heads/main.zip)
 2. Open Chrome and go to `chrome://extensions`
 3. Enable **Developer mode** (toggle in the top-right corner)
 4. Click **Load unpacked** and select the project folder

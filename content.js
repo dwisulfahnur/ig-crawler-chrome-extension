@@ -4,7 +4,7 @@ window.addEventListener('message', (event) => {
   if (!event.data?.__igCrawler) return;
 
   const posts = extractPosts(event.data.data);
-  if (posts.length) savePosts(posts);
+  if (posts.length) savePosts(posts).catch(() => {});
 });
 
 // ── Parsers ────────────────────────────────────────────────────────────────
@@ -220,9 +220,7 @@ async function savePosts(newPosts) {
     const updated = [...crawledPosts, ...toAdd];
     await chrome.storage.local.set({ crawledPosts: updated });
     chrome.runtime.sendMessage({ type: 'CRAWL_PROGRESS', count: updated.length }).catch(() => {});
-  } catch (err) {
-    if (err.message?.includes('Extension context invalidated')) {
-      stopAutoScroll();
-    }
+  } catch (_) {
+    stopAutoScroll();
   }
 }

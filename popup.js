@@ -24,7 +24,7 @@ function getFilteredPosts() {
   if (!from && !to) return byHashtag;
 
   return byHashtag.filter((p) => {
-    const d = p.tanggal;
+    const d = p.date?.slice(0, 10); // "YYYY-MM-DD" from "YYYY-MM-DD HH:MM"
     if (!d) return false;
     if (from && d < from) return false;
     if (to && d > to) return false;
@@ -123,12 +123,11 @@ btnExportCsv.addEventListener('click', () => {
   if (!toExport.length) return;
 
   const headers = [
-    'id', 'shortcode', 'timestamp', 'tanggal', 'jam',
-    'from_id', 'from_user', 'from_avatar',
+    'id', 'url', 'shortcode', 'timestamp', 'date',
     'author_id', 'author_username', 'author_name', 'author_avatar', 'author_bio', 'author_stats_followers',
-    'caption', 'url', 'tagged_users', 'tags',
+    'caption', 'tagged_users', 'tags',
     'video', 'image', 'type',
-    'comments_count', 'likes_count', 'views_count', 'engage_score',
+    'comments_count', 'likes_count', 'views_count',
     'location', 'is_geo', 'hashtag',
   ];
   const rows = toExport.map((p) => headers.map((h) => csvCell(p[h] ?? '')).join(','));

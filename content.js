@@ -88,13 +88,13 @@ function normalizeItem(item) {
     item.comment_count ?? item.edge_media_to_comment?.count ?? null;
   const viewCount = item.view_count ?? 0;
 
-  // Format date and time in local timezone from Unix timestamp
-  let tanggal = null;
-  let jam = null;
+  // Format date+time in local timezone from Unix timestamp → "YYYY-MM-DD HH:MM"
+  let date = null;
   if (takenAt) {
     const d = new Date(takenAt * 1000);
-    tanggal = d.toLocaleDateString('en-CA'); // YYYY-MM-DD
-    jam = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); // HH:MM
+    const ymd = d.toLocaleDateString('en-CA'); // YYYY-MM-DD
+    const hm = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); // HH:MM
+    date = `${ymd} ${hm}`;
   }
 
   // Hashtags extracted from caption text
@@ -106,25 +106,19 @@ function normalizeItem(item) {
     ? item.usertags.in.map((t) => t.user?.username).filter(Boolean).join(' ') || null
     : null;
 
-  const authorId = String(user.pk || user.id || '');
-
   return {
     id: String(item.pk || item.id || ''),
+    url: `https://www.instagram.com/p/${shortcode}/`,
     shortcode,
     timestamp: takenAt,
-    tanggal,
-    jam,
-    from_id: authorId,
-    from_user: user.username || null,
-    from_avatar: user.profile_pic_url || null,
-    author_id: authorId,
+    date,
+    author_id: String(user.pk || user.id || ''),
     author_username: user.username || null,
     author_name: user.full_name || null,
     author_avatar: user.profile_pic_url || null,
     author_bio: null,
     author_stats_followers: 0,
     caption: captionText,
-    url: `https://www.instagram.com/p/${shortcode}/`,
     tagged_users: taggedUsers,
     tags,
     video,
@@ -133,7 +127,6 @@ function normalizeItem(item) {
     comments_count: commentCount,
     likes_count: likeCount,
     views_count: viewCount,
-    engage_score: (likeCount ?? 0) + (commentCount ?? 0),
     location: item.location?.name || null,
     is_geo: !!item.location,
     hashtag: currentHashtag(),

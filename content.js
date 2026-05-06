@@ -98,7 +98,7 @@ function normalizeItem(item) {
   }
 
   // Hashtags extracted from caption text
-  const tagMatches = captionText.match(/#[\w-￿]+/g);
+  const tagMatches = captionText.match(/#[\w\u0080-\uFFFF]+/g);
   const tags = tagMatches ? tagMatches.join(' ') : null;
 
   // Tagged users on the media (from usertags, not caption)

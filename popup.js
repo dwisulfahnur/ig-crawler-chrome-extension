@@ -1,129 +1,111 @@
-const btnStart = document.getElementById("btn-start");
-const btnStop = document.getElementById("btn-stop");
-const btnExportJson = document.getElementById("btn-export-json");
-const btnExportCsv = document.getElementById("btn-export-csv");
-const btnClear = document.getElementById("btn-clear");
-const statusText = document.getElementById("status-text");
-const postCount = document.getElementById("post-count");
-const postList = document.getElementById("post-list");
+const btnExportCsv = document.getElementById('btn-export-csv');
+const btnClear = document.getElementById('btn-clear');
+const statusText = document.getElementById('status-text');
+const postCount = document.getElementById('post-count');
+const hashtagLabel = document.getElementById('hashtag-label');
+const postList = document.getElementById('post-list');
 
-let posts = [];
+let allPosts = [];
+let activeHashtag = null;
 
-async function getActiveTab() {
+async function getActiveHashtag() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  return tab;
+  if (!tab?.url?.includes('instagram.com')) return null;
+  try {
+    const url = new URL(tab.url);
+    const q = url.searchParams.get('q');
+    if (q) return decodeURIComponent(q);
+    const match = url.pathname.match(/\/tags\/([^/]+)/);
+    if (match) return `#${decodeURIComponent(match[1])}`;
+  } catch (_) {}
+  return null;
 }
 
-function setStatus(msg, running = false) {
-  statusText.textContent = msg;
-  btnStart.disabled = running;
-  btnStop.disabled = !running;
-}
+async function refresh() {
+  const { crawledPosts = [] } = await chrome.storage.local.get('crawledPosts');
+  allPosts = crawledPosts;
+  activeHashtag = await getActiveHashtag();
 
-function updateCountBadge(n) {
-  postCount.textContent = `${n} post${n !== 1 ? "s" : ""}`;
+  hashtagLabel.textContent = activeHashtag || '—';
+
+  const filtered = activeHashtag
+    ? allPosts.filter((p) => p.hashtag === activeHashtag)
+    : allPosts;
+
+  postCount.textContent = filtered.length;
+  btnExportCsv.disabled = filtered.length === 0;
+
+  if (!activeHashtag) {
+    statusText.textContent = 'Open a hashtag search page on Instagram';
+  } else if (filtered.length === 0) {
+    statusText.textContent = 'Scroll down to collect posts';
+  } else {
+    statusText.textContent = `Collecting — scroll to load more`;
+  }
+
+  renderPosts(filtered.slice(-15).reverse());
 }
 
 function renderPosts(data) {
-  postList.innerHTML = "";
-  data.slice(-20).reverse().forEach((p) => {
-    const item = document.createElement("div");
-    item.className = "post-item";
+  postList.innerHTML = '';
+  data.forEach((p) => {
+    const item = document.createElement('div');
+    item.className = 'post-item';
+    const date = p.timestamp ? new Date(p.timestamp * 1000).toLocaleDateString() : '—';
     item.innerHTML = `
-      ${p.thumbnailUrl ? `<img src="${p.thumbnailUrl}" alt="thumb" />` : ""}
+      ${p.thumbnailUrl ? `<img src="${p.thumbnailUrl}" alt="" />` : '<div class="thumb-placeholder"></div>'}
       <div class="post-info">
-        <div class="post-username">@${p.username || "unknown"}</div>
-        <div class="post-meta">${p.likes ?? "?"} likes · ${p.timestamp ? new Date(p.timestamp * 1000).toLocaleDateString() : ""}</div>
+        <div class="post-username">@${p.username || 'unknown'}</div>
+        <div class="post-meta">${p.likes ?? '?'} likes · ${date}</div>
       </div>`;
     postList.appendChild(item);
   });
 }
 
-async function loadStored() {
-  const { crawledPosts = [] } = await chrome.storage.local.get("crawledPosts");
-  posts = crawledPosts;
-  updateCountBadge(posts.length);
-  renderPosts(posts);
-  btnExportJson.disabled = posts.length === 0;
-  btnExportCsv.disabled = posts.length === 0;
-}
+btnExportCsv.addEventListener('click', () => {
+  const toExport = activeHashtag
+    ? allPosts.filter((p) => p.hashtag === activeHashtag)
+    : allPosts;
 
-btnStart.addEventListener("click", async () => {
-  const tab = await getActiveTab();
-  if (!tab?.url?.includes("instagram.com")) {
-    statusText.textContent = "Navigate to Instagram first.";
-    return;
-  }
+  if (!toExport.length) return;
 
-  const limit = parseInt(document.getElementById("scroll-limit").value, 10) || 50;
-  const delay = parseInt(document.getElementById("scroll-delay").value, 10) || 1500;
+  const headers = ['shortcode', 'username', 'caption', 'likes', 'comments', 'timestamp', 'mediaType', 'hashtag', 'postUrl'];
+  const rows = toExport.map((p) => headers.map((h) => csvCell(p[h] ?? '')).join(','));
+  const csv = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
 
-  setStatus("Crawling…", true);
-
-  chrome.tabs.sendMessage(tab.id, { action: "START_CRAWL", limit, delay });
+  const tag = activeHashtag ? activeHashtag.replace(/[^a-zA-Z0-9]/g, '_') : 'posts';
+  downloadBlob(blob, `instagram_${tag}.csv`);
 });
 
-btnStop.addEventListener("click", async () => {
-  const tab = await getActiveTab();
-  chrome.tabs.sendMessage(tab.id, { action: "STOP_CRAWL" });
-  setStatus("Stopped");
-});
-
-btnClear.addEventListener("click", async () => {
+btnClear.addEventListener('click', async () => {
   await chrome.storage.local.set({ crawledPosts: [] });
-  posts = [];
-  updateCountBadge(0);
-  postList.innerHTML = "";
-  btnExportJson.disabled = true;
+  allPosts = [];
+  postList.innerHTML = '';
+  postCount.textContent = '0';
   btnExportCsv.disabled = true;
-  statusText.textContent = "Data cleared.";
+  statusText.textContent = 'Data cleared.';
 });
 
-btnExportJson.addEventListener("click", () => {
-  const blob = new Blob([JSON.stringify(posts, null, 2)], { type: "application/json" });
-  downloadBlob(blob, "instagram_posts.json");
-});
-
-btnExportCsv.addEventListener("click", () => {
-  const headers = ["shortcode", "username", "caption", "likes", "comments", "timestamp", "postUrl", "thumbnailUrl", "type"];
-  const rows = posts.map((p) =>
-    headers.map((h) => JSON.stringify(p[h] ?? "")).join(",")
-  );
-  const csv = [headers.join(","), ...rows].join("\n");
-  const blob = new Blob([csv], { type: "text/csv" });
-  downloadBlob(blob, "instagram_posts.csv");
-});
+function csvCell(val) {
+  const s = String(val);
+  return s.includes(',') || s.includes('"') || s.includes('\n')
+    ? `"${s.replace(/"/g, '""')}"`
+    : s;
+}
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
+  const a = document.createElement('a');
   a.href = url;
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
 }
 
-// Listen for live updates from background/content
+// Live update when content script saves new posts
 chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.type === "CRAWL_PROGRESS") {
-    posts = msg.posts;
-    updateCountBadge(posts.length);
-    renderPosts(posts);
-    statusText.textContent = `Crawling… (${posts.length} collected)`;
-    btnExportJson.disabled = false;
-    btnExportCsv.disabled = false;
-  }
-  if (msg.type === "CRAWL_DONE") {
-    posts = msg.posts;
-    updateCountBadge(posts.length);
-    renderPosts(posts);
-    setStatus(`Done — ${posts.length} posts collected`);
-    btnExportJson.disabled = posts.length === 0;
-    btnExportCsv.disabled = posts.length === 0;
-  }
-  if (msg.type === "CRAWL_ERROR") {
-    setStatus(`Error: ${msg.error}`);
-  }
+  if (msg.type === 'CRAWL_PROGRESS') refresh();
 });
 
-loadStored();
+refresh();

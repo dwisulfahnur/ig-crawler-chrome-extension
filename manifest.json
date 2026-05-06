@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Instagram Posts Crawler",
   "version": "1.0.0",
-  "description": "Crawl and export Instagram posts data from profiles and hashtags",
+  "description": "Collect Instagram hashtag posts by intercepting API responses as you scroll. Requires Chrome 111+.",
   "permissions": [
     "activeTab",
     "storage",
@@ -17,8 +17,14 @@
   "content_scripts": [
     {
       "matches": ["https://www.instagram.com/*"],
+      "js": ["injected.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://www.instagram.com/*"],
       "js": ["content.js"],
-      "run_at": "document_idle"
+      "run_at": "document_start"
     }
   ],
   "action": {

@@ -165,10 +165,7 @@ function startAutoScroll(delay) {
   stopAutoScroll();
   autoScrolling = true;
   function step() {
-    if (!autoScrolling || contextInvalidated) {
-      stopAutoScroll();
-      return;
-    }
+    if (!autoScrolling) return;
     window.scrollBy({ top: window.innerHeight * 0.85, behavior: 'smooth' });
     autoScrollTimer = setTimeout(step, delay);
   }
@@ -212,8 +209,10 @@ async function savePosts(newPosts) {
     const updated = [...crawledPosts, ...toAdd];
     await chrome.storage.local.set({ crawledPosts: updated });
     chrome.runtime.sendMessage({ type: 'CRAWL_PROGRESS', count: updated.length }).catch(() => {});
-  } catch (_) {
-    contextInvalidated = true;
-    stopAutoScroll();
+  } catch (err) {
+    if (err?.message?.includes('Extension context')) {
+      contextInvalidated = true;
+      stopAutoScroll();
+    }
   }
 }

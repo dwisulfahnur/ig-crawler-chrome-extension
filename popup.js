@@ -124,7 +124,7 @@ btnExportCsv.addEventListener('click', () => {
 
   const headers = [
     'id', 'url', 'shortcode', 'timestamp', 'date',
-    'author_id', 'author_username', 'author_name', 'author_avatar', 'author_bio', 'author_stats_followers',
+    'author_id', 'author_username', 'author_name', 'author_avatar', 'author_bio',
     'caption', 'tagged_users', 'tags',
     'video', 'image', 'type',
     'comments_count', 'likes_count', 'views_count',

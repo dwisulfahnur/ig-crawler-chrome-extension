@@ -120,7 +120,6 @@ function normalizeItem(item) {
     author_name: user.full_name || null,
     author_avatar: user.profile_pic_url || null,
     author_bio: null,
-    author_stats_followers: 0,
     caption: captionText,
     tagged_users: taggedUsers,
     tags,

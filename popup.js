@@ -6,9 +6,31 @@ const hashtagLabel = document.getElementById('hashtag-label');
 const postList = document.getElementById('post-list');
 const chkAutoScroll = document.getElementById('chk-autoscroll');
 const selScrollSpeed = document.getElementById('sel-scroll-speed');
+const dateFrom = document.getElementById('date-from');
+const dateTo = document.getElementById('date-to');
 
 let allPosts = [];
 let activeHashtag = null;
+
+// Returns posts filtered by the active hashtag then by the date range inputs.
+// tanggal is stored as "YYYY-MM-DD" — ISO string comparison is lexicographically correct.
+function getFilteredPosts() {
+  const byHashtag = activeHashtag
+    ? allPosts.filter((p) => p.hashtag === activeHashtag)
+    : allPosts;
+
+  const from = dateFrom.value; // "YYYY-MM-DD" or ""
+  const to = dateTo.value;
+  if (!from && !to) return byHashtag;
+
+  return byHashtag.filter((p) => {
+    const d = p.tanggal;
+    if (!d) return false;
+    if (from && d < from) return false;
+    if (to && d > to) return false;
+    return true;
+  });
+}
 
 async function getActiveHashtag() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -50,19 +72,26 @@ async function refresh() {
 
   hashtagLabel.textContent = activeHashtag || '—';
 
-  const filtered = activeHashtag
-    ? allPosts.filter((p) => p.hashtag === activeHashtag)
-    : allPosts;
+  const filtered = getFilteredPosts();
+  const totalForHashtag = activeHashtag
+    ? allPosts.filter((p) => p.hashtag === activeHashtag).length
+    : allPosts.length;
+  const isFiltered = (dateFrom.value || dateTo.value) && filtered.length !== totalForHashtag;
 
-  postCount.textContent = filtered.length;
+  postCount.textContent = isFiltered
+    ? `${filtered.length} / ${totalForHashtag}`
+    : String(filtered.length);
+
   btnExportCsv.disabled = filtered.length === 0;
 
   if (!activeHashtag) {
     statusText.textContent = 'Open a hashtag search page on Instagram';
   } else if (chkAutoScroll.checked) {
     statusText.textContent = 'Auto scrolling...';
-  } else if (filtered.length === 0) {
+  } else if (totalForHashtag === 0) {
     statusText.textContent = 'Scroll down to collect posts';
+  } else if (isFiltered) {
+    statusText.textContent = `${filtered.length} of ${totalForHashtag} posts in range`;
   } else {
     statusText.textContent = 'Collecting — scroll to load more';
   }
@@ -90,10 +119,7 @@ function renderPosts(data) {
 }
 
 btnExportCsv.addEventListener('click', () => {
-  const toExport = activeHashtag
-    ? allPosts.filter((p) => p.hashtag === activeHashtag)
-    : allPosts;
-
+  const toExport = getFilteredPosts();
   if (!toExport.length) return;
 
   const headers = [
@@ -110,7 +136,10 @@ btnExportCsv.addEventListener('click', () => {
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
 
   const tag = activeHashtag ? activeHashtag.replace(/[^a-zA-Z0-9]/g, '_') : 'posts';
-  downloadBlob(blob, `instagram_${tag}.csv`);
+  const range = (dateFrom.value || dateTo.value)
+    ? `_${dateFrom.value || 'start'}_to_${dateTo.value || 'end'}`
+    : '';
+  downloadBlob(blob, `instagram_${tag}${range}.csv`);
 });
 
 btnClear.addEventListener('click', async () => {
@@ -161,6 +190,9 @@ selScrollSpeed.addEventListener('change', async () => {
   const delay = parseInt(selScrollSpeed.value, 10);
   chrome.tabs.sendMessage(tab.id, { action: 'START_AUTOSCROLL', delay });
 });
+
+dateFrom.addEventListener('change', refresh);
+dateTo.addEventListener('change', refresh);
 
 // Live update when content script saves new posts
 chrome.runtime.onMessage.addListener((msg) => {

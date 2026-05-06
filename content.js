@@ -169,7 +169,10 @@ function startAutoScroll(delay) {
   stopAutoScroll();
   autoScrolling = true;
   function step() {
-    if (!autoScrolling) return;
+    if (!autoScrolling || !isContextAlive()) {
+      stopAutoScroll();
+      return;
+    }
     window.scrollBy({ top: window.innerHeight * 0.85, behavior: 'smooth' });
     autoScrollTimer = setTimeout(step, delay);
   }
@@ -201,13 +204,32 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
 // ── Storage ────────────────────────────────────────────────────────────────
 
-async function savePosts(newPosts) {
-  const { crawledPosts = [] } = await chrome.storage.local.get('crawledPosts');
-  const seen = new Set(crawledPosts.map((p) => p.shortcode));
-  const toAdd = newPosts.filter((p) => p?.shortcode && !seen.has(p.shortcode));
-  if (!toAdd.length) return;
+function isContextAlive() {
+  try {
+    return !!chrome.runtime?.id;
+  } catch (_) {
+    return false;
+  }
+}
 
-  const updated = [...crawledPosts, ...toAdd];
-  await chrome.storage.local.set({ crawledPosts: updated });
-  chrome.runtime.sendMessage({ type: 'CRAWL_PROGRESS', count: updated.length });
+async function savePosts(newPosts) {
+  if (!isContextAlive()) {
+    stopAutoScroll();
+    return;
+  }
+
+  try {
+    const { crawledPosts = [] } = await chrome.storage.local.get('crawledPosts');
+    const seen = new Set(crawledPosts.map((p) => p.shortcode));
+    const toAdd = newPosts.filter((p) => p?.shortcode && !seen.has(p.shortcode));
+    if (!toAdd.length) return;
+
+    const updated = [...crawledPosts, ...toAdd];
+    await chrome.storage.local.set({ crawledPosts: updated });
+    chrome.runtime.sendMessage({ type: 'CRAWL_PROGRESS', count: updated.length }).catch(() => {});
+  } catch (err) {
+    if (err.message?.includes('Extension context invalidated')) {
+      stopAutoScroll();
+    }
+  }
 }

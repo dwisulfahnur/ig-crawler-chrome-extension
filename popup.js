@@ -53,10 +53,10 @@ function renderPosts(data) {
     item.className = 'post-item';
     const date = p.timestamp ? new Date(p.timestamp * 1000).toLocaleDateString() : '—';
     item.innerHTML = `
-      ${p.thumbnailUrl ? `<img src="${p.thumbnailUrl}" alt="" />` : '<div class="thumb-placeholder"></div>'}
+      ${p.image ? `<img src="${p.image}" alt="" />` : '<div class="thumb-placeholder"></div>'}
       <div class="post-info">
-        <div class="post-username">@${p.username || 'unknown'}</div>
-        <div class="post-meta">${p.likes ?? '?'} likes · ${date}</div>
+        <div class="post-username">@${p.author_username || 'unknown'}</div>
+        <div class="post-meta">${p.likes_count ?? '?'} likes · ${date}</div>
       </div>`;
     postList.appendChild(item);
   });
@@ -69,7 +69,15 @@ btnExportCsv.addEventListener('click', () => {
 
   if (!toExport.length) return;
 
-  const headers = ['shortcode', 'username', 'caption', 'likes', 'comments', 'timestamp', 'mediaType', 'hashtag', 'postUrl'];
+  const headers = [
+    'id', 'shortcode', 'timestamp', 'tanggal', 'jam',
+    'from_id', 'from_user', 'from_avatar',
+    'author_id', 'author_username', 'author_name', 'author_avatar', 'author_bio', 'author_stats_followers',
+    'caption', 'url', 'tagged_users', 'tags',
+    'video', 'image', 'type',
+    'comments_count', 'likes_count', 'views_count', 'engage_score',
+    'location', 'is_geo', 'hashtag',
+  ];
   const rows = toExport.map((p) => headers.map((h) => csvCell(p[h] ?? '')).join(','));
   const csv = [headers.join(','), ...rows].join('\n');
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });

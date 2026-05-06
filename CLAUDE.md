@@ -41,44 +41,50 @@ Instagram page (fetch/XHR)
 
 ## Instagram API response shapes handled in `content.js`
 
-Instagram serves different JSON shapes depending on the endpoint. `extractPosts()` tries all of them:
+`extractPosts()` tries all known shapes in priority order:
 
-| Shape | Endpoint pattern | Structure |
+| Shape | Endpoint | Path |
 |---|---|---|
-| **V1 sections** | `/api/v1/fbsearch/`, `/api/v1/tags/*/sections/` | `sections[].layout_content.medias[].media` |
-| **GraphQL** | `/graphql/query` | `data.hashtag.edge_hashtag_to_media.edges[].node` |
-| **Flat items** | some `/api/v1/` endpoints | `items[]` |
+| **Primary** — xdt_fbsearch serp | `POST /graphql/query` | `data.xdt_fbsearch__top_serp_graphql.edges[].node.items[]` |
+| **Fallback A** — V1 sections | `/api/v1/tags/*/sections/` | `sections[].layout_content.medias[].media` |
+| **Fallback B** — flat items | various `/api/v1/` | `items[]` |
 
-`normalizeV1()` handles Web API v1 media objects (`media.code` = shortcode, `media.like_count`, `media.user.username`, etc.).
-`normalizeGQL()` handles GraphQL nodes (`node.shortcode`, `node.edge_liked_by.count`, `node.owner.username`, etc.).
+All shapes feed through a single `normalizeItem()` function.
 
-## Post data shape (stored + exported)
+**Key field mappings from primary shape:**
 
-```js
-{
-  shortcode,    // Instagram post ID (used for deduplication)
-  username,
-  caption,      // newlines replaced with spaces
-  likes,
-  comments,
-  timestamp,    // Unix epoch seconds (null if unavailable)
-  mediaType,    // "Photo" | "Video" | "Album" | GraphQL __typename
-  hashtag,      // e.g. "#nature" — taken from URL at collection time
-  postUrl,      // https://www.instagram.com/p/{shortcode}/
-  thumbnailUrl
-}
-```
+| Output field | Source |
+|---|---|
+| `id` | `item.pk` |
+| `shortcode` | `item.code` |
+| `from_id` / `author_id` | `item.user.pk` |
+| `from_user` / `author_username` | `item.user.username` |
+| `author_name` | `item.user.full_name` |
+| `from_avatar` / `author_avatar` | `item.user.profile_pic_url` |
+| `image` | `item.image_versions2.candidates[0].url` |
+| `video` | `item.video_versions[0].url` (only when `media_type === 2`) |
+| `likes_count` | `item.like_count` |
+| `comments_count` | `item.comment_count` |
+| `views_count` | `item.view_count` (0 if null) |
+| `engage_score` | `likes_count + comments_count` |
+| `tags` | hashtags extracted from `caption.text` (e.g. `"#nature #travel"`) |
+| `tagged_users` | `item.usertags.in[].user.username` (null if none) |
+| `type` | `"photo"` / `"video"` / `"album"` from `media_type` (1/2/8) |
+| `tanggal` | `taken_at` formatted as `YYYY-MM-DD` (local timezone) |
+| `jam` | `taken_at` formatted as `HH:MM` (local timezone) |
 
 ## Storage
 
-All posts are stored in a single `chrome.storage.local` key: `crawledPosts` (array).
-The popup filters by `post.hashtag === activeHashtag` to show only the current search's results.
+All posts stored in `chrome.storage.local` under key `crawledPosts` (flat array).
+Deduplication key is `shortcode`. Popup filters by `post.hashtag === activeHashtag`.
 
 ## CSV export
 
-- BOM-prefixed UTF-8 (`﻿`) so Excel opens it correctly
+- BOM-prefixed UTF-8 so Excel opens it correctly
 - Filename: `instagram_{hashtag}.csv`
-- Columns: `shortcode, username, caption, likes, comments, timestamp, mediaType, hashtag, postUrl`
+- Columns (28 total): `id, shortcode, timestamp, tanggal, jam, from_id, from_user, from_avatar, author_id, author_username, author_name, author_avatar, author_bio, author_stats_followers, caption, url, tagged_users, tags, video, image, type, comments_count, likes_count, views_count, engage_score, location, is_geo, hashtag`
+
+The reference for expected field shape is `expected_field_result.json`.
 
 ## Key constraint
 

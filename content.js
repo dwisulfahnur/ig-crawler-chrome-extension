@@ -8,36 +8,37 @@ window.addEventListener('message', (event) => {
 });
 
 // ── Parsers ────────────────────────────────────────────────────────────────
-// Instagram serves several different JSON shapes depending on the endpoint.
 
 function extractPosts(json) {
   if (!json || typeof json !== 'object') return [];
   const results = [];
 
-  // Shape A: V1 sections layout (fbsearch, /tags/{name}/sections/, explore grids)
-  // Structure: { sections: [{ layout_content: { medias: [{ media: {...} }] } }] }
+  // Primary shape: xdt_fbsearch__top_serp_graphql
+  // data.xdt_fbsearch__top_serp_graphql.edges[].node.items[]
+  const serpEdges = json?.data?.xdt_fbsearch__top_serp_graphql?.edges;
+  if (Array.isArray(serpEdges)) {
+    serpEdges.forEach((edge) => {
+      const items = edge?.node?.items;
+      if (Array.isArray(items)) {
+        items.forEach((item) => {
+          const p = normalizeItem(item);
+          if (p) results.push(p);
+        });
+      }
+    });
+  }
+
+  // Fallback: V1 sections layout (tags/{name}/sections/, explore grids)
   collectSections(json?.sections, results);
   collectSections(json?.data?.sections, results);
   collectSections(json?.data?.top?.sections, results);
   collectSections(json?.data?.recent?.sections, results);
 
-  // Shape B: GraphQL hashtag response
-  // Structure: { data: { hashtag: { edge_hashtag_to_media: { edges: [{ node: {...} }] } } } }
-  const gqlEdges =
-    json?.data?.hashtag?.edge_hashtag_to_media?.edges ||
-    json?.data?.hashtag?.edge_hashtag_to_top_posts?.edges;
-  if (Array.isArray(gqlEdges)) {
-    gqlEdges.forEach((e) => {
-      const p = normalizeGQL(e?.node);
-      if (p) results.push(p);
-    });
-  }
-
-  // Shape C: flat items array (some older v1 endpoints)
-  const items = json?.items || json?.data?.items;
-  if (Array.isArray(items)) {
-    items.forEach((item) => {
-      const p = normalizeV1(item);
+  // Fallback: flat items array
+  const flatItems = json?.items || json?.data?.items;
+  if (Array.isArray(flatItems)) {
+    flatItems.forEach((item) => {
+      const p = normalizeItem(item);
       if (p) results.push(p);
     });
   }
@@ -48,67 +49,111 @@ function extractPosts(json) {
 function collectSections(sections, results) {
   if (!Array.isArray(sections)) return;
   sections.forEach((section) => {
-    const medias = section?.layout_content?.medias || [];
-    medias.forEach((m) => {
-      const p = normalizeV1(m?.media ?? m);
+    (section?.layout_content?.medias || []).forEach((m) => {
+      const p = normalizeItem(m?.media ?? m);
       if (p) results.push(p);
     });
   });
 }
 
-// Instagram Web API v1 media object
-function normalizeV1(media) {
-  if (!media || typeof media !== 'object') return null;
-  const shortcode = media.code || media.shortcode;
+// Normalizes any Instagram media item into the expected output shape.
+function normalizeItem(item) {
+  if (!item || typeof item !== 'object') return null;
+  const shortcode = item.code || item.shortcode;
   if (!shortcode) return null;
 
-  const thumb =
-    media.image_versions2?.candidates?.[0]?.url ||
-    media.carousel_media?.[0]?.image_versions2?.candidates?.[0]?.url ||
+  const user = item.user || item.owner || {};
+  const captionText = item.caption?.text || '';
+  const takenAt = item.taken_at ?? item.taken_at_timestamp ?? null;
+  const mediaType = item.media_type;
+
+  // Largest available image candidate
+  const image =
+    item.image_versions2?.candidates?.[0]?.url ||
+    item.carousel_media?.[0]?.image_versions2?.candidates?.[0]?.url ||
+    item.thumbnail_src ||
+    item.display_url ||
     null;
 
+  // Video URL only for video posts (media_type 2)
+  const isVideo = mediaType === 2 || item.__typename === 'GraphVideo';
+  const video = isVideo ? (item.video_versions?.[0]?.url ?? null) : null;
+
+  const likeCount =
+    item.like_count ??
+    item.edge_liked_by?.count ??
+    item.edge_media_preview_like?.count ??
+    null;
+  const commentCount =
+    item.comment_count ?? item.edge_media_to_comment?.count ?? null;
+  const viewCount = item.view_count ?? 0;
+
+  // Format date and time in local timezone from Unix timestamp
+  let tanggal = null;
+  let jam = null;
+  if (takenAt) {
+    const d = new Date(takenAt * 1000);
+    tanggal = d.toLocaleDateString('en-CA'); // YYYY-MM-DD
+    jam = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); // HH:MM
+  }
+
+  // Hashtags extracted from caption text
+  const tagMatches = captionText.match(/#[\w-￿]+/g);
+  const tags = tagMatches ? tagMatches.join(' ') : null;
+
+  // Tagged users on the media (from usertags, not caption)
+  const taggedUsers = item.usertags?.in
+    ? item.usertags.in.map((t) => t.user?.username).filter(Boolean).join(' ') || null
+    : null;
+
+  const authorId = String(user.pk || user.id || '');
+
   return {
+    id: String(item.pk || item.id || ''),
     shortcode,
-    username: media.user?.username || media.owner?.username || null,
-    caption: (media.caption?.text || '').replace(/\n/g, ' '),
-    likes: media.like_count ?? null,
-    comments: media.comment_count ?? null,
-    timestamp: media.taken_at ?? null,
-    mediaType: v1MediaTypeLabel(media.media_type),
+    timestamp: takenAt,
+    tanggal,
+    jam,
+    from_id: authorId,
+    from_user: user.username || null,
+    from_avatar: user.profile_pic_url || null,
+    author_id: authorId,
+    author_username: user.username || null,
+    author_name: user.full_name || null,
+    author_avatar: user.profile_pic_url || null,
+    author_bio: null,
+    author_stats_followers: 0,
+    caption: captionText,
+    url: `https://www.instagram.com/p/${shortcode}/`,
+    tagged_users: taggedUsers,
+    tags,
+    video,
+    image,
+    type: mediaTypeLabel(mediaType, item.__typename),
+    comments_count: commentCount,
+    likes_count: likeCount,
+    views_count: viewCount,
+    engage_score: (likeCount ?? 0) + (commentCount ?? 0),
+    location: item.location?.name || null,
+    is_geo: !!item.location,
     hashtag: currentHashtag(),
-    postUrl: `https://www.instagram.com/p/${shortcode}/`,
-    thumbnailUrl: thumb,
   };
 }
 
-// Instagram GraphQL node
-function normalizeGQL(node) {
-  if (!node?.shortcode) return null;
-  return {
-    shortcode: node.shortcode,
-    username: node.owner?.username || null,
-    caption: (node.edge_media_to_caption?.edges?.[0]?.node?.text || '').replace(/\n/g, ' '),
-    likes: node.edge_liked_by?.count ?? node.edge_media_preview_like?.count ?? null,
-    comments: node.edge_media_to_comment?.count ?? null,
-    timestamp: node.taken_at_timestamp ?? null,
-    mediaType: node.__typename || 'GraphImage',
-    hashtag: currentHashtag(),
-    postUrl: `https://www.instagram.com/p/${node.shortcode}/`,
-    thumbnailUrl: node.thumbnail_src || node.display_url || null,
-  };
-}
-
-function v1MediaTypeLabel(type) {
-  if (type === 1) return 'Photo';
-  if (type === 2) return 'Video';
-  if (type === 8) return 'Album';
-  return type != null ? String(type) : 'Unknown';
+function mediaTypeLabel(type, typename) {
+  if (type === 1) return 'photo';
+  if (type === 2) return 'video';
+  if (type === 8) return 'album';
+  if (typename === 'GraphImage') return 'photo';
+  if (typename === 'GraphVideo') return 'video';
+  if (typename === 'GraphSidecar') return 'album';
+  return 'unknown';
 }
 
 function currentHashtag() {
   try {
     const q = new URLSearchParams(location.search).get('q');
-    if (q) return decodeURIComponent(q); // e.g. "#nature"
+    if (q) return decodeURIComponent(q);
     const match = location.pathname.match(/\/tags\/([^/]+)/);
     if (match) return `#${decodeURIComponent(match[1])}`;
   } catch (_) {}

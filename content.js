@@ -1,10 +1,13 @@
 // Isolated world — receives intercepted API responses from injected.js via postMessage.
+let contextInvalidated = false;
+
 window.addEventListener('message', (event) => {
+  if (contextInvalidated) return;
   if (event.source !== window) return;
   if (!event.data?.__igCrawler) return;
 
   const posts = extractPosts(event.data.data);
-  if (posts.length) savePosts(posts).catch(() => {});
+  if (posts.length) savePosts(posts);
 });
 
 // ── Parsers ────────────────────────────────────────────────────────────────
@@ -162,7 +165,7 @@ function startAutoScroll(delay) {
   stopAutoScroll();
   autoScrolling = true;
   function step() {
-    if (!autoScrolling || !isContextAlive()) {
+    if (!autoScrolling || contextInvalidated) {
       stopAutoScroll();
       return;
     }
@@ -197,19 +200,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
 // ── Storage ────────────────────────────────────────────────────────────────
 
-function isContextAlive() {
-  try {
-    return !!chrome.runtime?.id;
-  } catch (_) {
-    return false;
-  }
-}
-
 async function savePosts(newPosts) {
-  if (!isContextAlive()) {
-    stopAutoScroll();
-    return;
-  }
+  if (contextInvalidated) return;
 
   try {
     const { crawledPosts = [] } = await chrome.storage.local.get('crawledPosts');
@@ -221,6 +213,7 @@ async function savePosts(newPosts) {
     await chrome.storage.local.set({ crawledPosts: updated });
     chrome.runtime.sendMessage({ type: 'CRAWL_PROGRESS', count: updated.length }).catch(() => {});
   } catch (_) {
+    contextInvalidated = true;
     stopAutoScroll();
   }
 }

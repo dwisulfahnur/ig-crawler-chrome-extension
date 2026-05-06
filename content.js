@@ -160,6 +160,45 @@ function currentHashtag() {
   return '';
 }
 
+// ── Auto-scroll ────────────────────────────────────────────────────────────
+
+let autoScrolling = false;
+let autoScrollTimer = null;
+
+function startAutoScroll(delay) {
+  stopAutoScroll();
+  autoScrolling = true;
+  function step() {
+    if (!autoScrolling) return;
+    window.scrollBy({ top: window.innerHeight * 0.85, behavior: 'smooth' });
+    autoScrollTimer = setTimeout(step, delay);
+  }
+  autoScrollTimer = setTimeout(step, delay);
+}
+
+function stopAutoScroll() {
+  autoScrolling = false;
+  clearTimeout(autoScrollTimer);
+  autoScrollTimer = null;
+}
+
+window.addEventListener('beforeunload', stopAutoScroll);
+
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg.action === 'START_AUTOSCROLL') {
+    startAutoScroll(msg.delay || 2000);
+    sendResponse({ ok: true });
+  }
+  if (msg.action === 'STOP_AUTOSCROLL') {
+    stopAutoScroll();
+    sendResponse({ ok: true });
+  }
+  if (msg.action === 'GET_STATE') {
+    sendResponse({ autoScrolling });
+  }
+  return true;
+});
+
 // ── Storage ────────────────────────────────────────────────────────────────
 
 async function savePosts(newPosts) {

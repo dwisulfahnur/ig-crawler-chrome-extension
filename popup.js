@@ -4,6 +4,8 @@ const statusText = document.getElementById('status-text');
 const postCount = document.getElementById('post-count');
 const hashtagLabel = document.getElementById('hashtag-label');
 const postList = document.getElementById('post-list');
+const chkAutoScroll = document.getElementById('chk-autoscroll');
+const selScrollSpeed = document.getElementById('sel-scroll-speed');
 
 let allPosts = [];
 let activeHashtag = null;
@@ -19,6 +21,26 @@ async function getActiveHashtag() {
     if (match) return `#${decodeURIComponent(match[1])}`;
   } catch (_) {}
   return null;
+}
+
+async function getActiveTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tab;
+}
+
+async function syncAutoScrollState(tab) {
+  const onInstagram = tab?.url?.includes('instagram.com');
+  chkAutoScroll.disabled = !onInstagram;
+  if (!onInstagram) return;
+
+  try {
+    const state = await chrome.tabs.sendMessage(tab.id, { action: 'GET_STATE' });
+    chkAutoScroll.checked = state?.autoScrolling ?? false;
+    selScrollSpeed.disabled = !chkAutoScroll.checked;
+  } catch (_) {
+    chkAutoScroll.checked = false;
+    selScrollSpeed.disabled = true;
+  }
 }
 
 async function refresh() {
@@ -37,13 +59,18 @@ async function refresh() {
 
   if (!activeHashtag) {
     statusText.textContent = 'Open a hashtag search page on Instagram';
+  } else if (chkAutoScroll.checked) {
+    statusText.textContent = 'Auto scrolling...';
   } else if (filtered.length === 0) {
     statusText.textContent = 'Scroll down to collect posts';
   } else {
-    statusText.textContent = `Collecting — scroll to load more`;
+    statusText.textContent = 'Collecting — scroll to load more';
   }
 
   renderPosts(filtered.slice(-15).reverse());
+
+  const tab = await getActiveTab();
+  await syncAutoScrollState(tab);
 }
 
 function renderPosts(data) {
@@ -110,6 +137,30 @@ function downloadBlob(blob, filename) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+chkAutoScroll.addEventListener('change', async () => {
+  const tab = await getActiveTab();
+  if (!tab) return;
+
+  if (chkAutoScroll.checked) {
+    const delay = parseInt(selScrollSpeed.value, 10);
+    chrome.tabs.sendMessage(tab.id, { action: 'START_AUTOSCROLL', delay });
+    selScrollSpeed.disabled = false;
+    statusText.textContent = 'Auto scrolling...';
+  } else {
+    chrome.tabs.sendMessage(tab.id, { action: 'STOP_AUTOSCROLL' });
+    selScrollSpeed.disabled = true;
+    statusText.textContent = 'Collecting — scroll to load more';
+  }
+});
+
+selScrollSpeed.addEventListener('change', async () => {
+  if (!chkAutoScroll.checked) return;
+  const tab = await getActiveTab();
+  if (!tab) return;
+  const delay = parseInt(selScrollSpeed.value, 10);
+  chrome.tabs.sendMessage(tab.id, { action: 'START_AUTOSCROLL', delay });
+});
 
 // Live update when content script saves new posts
 chrome.runtime.onMessage.addListener((msg) => {

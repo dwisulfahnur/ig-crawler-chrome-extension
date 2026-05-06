@@ -17,7 +17,17 @@
       <span id="post-count" class="badge">0</span>
     </section>
 
-    <p class="hint">Scroll down on Instagram — posts are collected automatically.</p>
+    <section class="autoscroll-row">
+      <label class="toggle-label">
+        <input type="checkbox" id="chk-autoscroll" />
+        <span>Auto scroll</span>
+      </label>
+      <select id="sel-scroll-speed" disabled>
+        <option value="3000">Slow (3s)</option>
+        <option value="2000" selected>Normal (2s)</option>
+        <option value="1000">Fast (1s)</option>
+      </select>
+    </section>
 
     <section class="actions">
       <button id="btn-export-csv" class="btn btn-primary" disabled>Export CSV</button>

@@ -166,17 +166,21 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
+function sendToTab(tabId, msg) {
+  chrome.tabs.sendMessage(tabId, msg).catch(() => {});
+}
+
 chkAutoScroll.addEventListener('change', async () => {
   const tab = await getActiveTab();
   if (!tab) return;
 
   if (chkAutoScroll.checked) {
     const delay = parseInt(selScrollSpeed.value, 10);
-    chrome.tabs.sendMessage(tab.id, { action: 'START_AUTOSCROLL', delay });
+    sendToTab(tab.id, { action: 'START_AUTOSCROLL', delay });
     selScrollSpeed.disabled = false;
     statusText.textContent = 'Auto scrolling...';
   } else {
-    chrome.tabs.sendMessage(tab.id, { action: 'STOP_AUTOSCROLL' });
+    sendToTab(tab.id, { action: 'STOP_AUTOSCROLL' });
     selScrollSpeed.disabled = true;
     statusText.textContent = 'Collecting — scroll to load more';
   }
@@ -187,7 +191,7 @@ selScrollSpeed.addEventListener('change', async () => {
   const tab = await getActiveTab();
   if (!tab) return;
   const delay = parseInt(selScrollSpeed.value, 10);
-  chrome.tabs.sendMessage(tab.id, { action: 'START_AUTOSCROLL', delay });
+  sendToTab(tab.id, { action: 'START_AUTOSCROLL', delay });
 });
 
 dateFrom.addEventListener('change', refresh);
